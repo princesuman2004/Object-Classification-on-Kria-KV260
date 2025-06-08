@@ -22,53 +22,50 @@ model = models.mobilenet_v2(pretrained=True)
 model.classifier[1] = nn.Linear(model.last_channel, 80)  # Adjust classes
 torch.save(model.state_dict(), 'model/model.pth')
 ```
-## 🔍 Step 2: Quantization
-```python
-bash
 
+## 🔍 Step 2: Quantization
+
+```bash
 python quantize.py
 ```
 
 Quantizes the model and generates files like:
+- `quantized/quant_info.json`
+- `quantized/MobileNetV2.py`
 
-quantized/quant_info.json
+## ⚡ Step 3: Export the Quantized Model
 
-quantized/MobileNetV2.py
-
-## 3. Export the Quantized Model
 Export the .xmodel required for the compiler:
 
-bash
-
+```bash
 python export_xmodel.py
+```
 
 Generates:
+- `quantize_result/MobileNetV2_int.xmodel`
 
-quantize_result/MobileNetV2_int.xmodel
+## 🎯 Step 4: Compile for KV260
 
-## 4. Compile for KV260
 Use the Vitis AI compiler (vai_c_xir) to target the KV260 board:
 
-bash
-
+```bash
 vai_c_xir \
   --xmodel quantize_result/MobileNetV2_int.xmodel \
   --arch /opt/vitis_ai/compiler/arch/DPUCZDX8G/KV260/arch.json \
   --output_dir compiled_model \
   --net_name mobilenetv2_kv260
+```
+
 Output:
-
-compiled_model/mobilenetv2_kv260.xmodel
-
-compiled_model/meta.json
+- `compiled_model/mobilenetv2_kv260.xmodel`
+- `compiled_model/meta.json`
 
 ## 📦 Output Summary
-Compiled model: in compiled_model/ ready for DPU
 
-Quantization artifacts: in quantized/
+- **Compiled model**: in `compiled_model/` ready for DPU
+- **Quantization artifacts**: in `quantized/`
+- **Exported .xmodel**: in `quantize_result/`
 
-Exported .xmodel: in quantize_result/
+## 📃 License
 
-📃 License
 MIT License
-
