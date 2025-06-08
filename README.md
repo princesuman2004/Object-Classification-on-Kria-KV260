@@ -1,71 +1,143 @@
-# MobileNetV2 Deployment on Kria KV260 using Vitis AI
+# MobileNetV2 Deployment on Kria KV260
 
-This project demonstrates the end-to-end deployment of a MobileNetV2 model on the Kria KV260 board using the Vitis AI toolchain.
+This repository contains a complete implementation for quantizing, compiling, and deploying a MobileNetV2 model on the AMD Kria KV260 FPGA board using Vitis AI.
 
-##  Prerequisites
+## Project Structure
 
-- Ubuntu 20.04 with Xilinx tools installed
-- Python 3.8+
-- Vitis AI Docker or native install
-- PyTorch
-- torchvision
-- Vitis AI tools (quantizer, compiler)
+```
+├── calibration_images/     # Calibration dataset for quantization
+├── compiled_model/         # Final compiled model for KV260 deployment
+├── model/                  # Original trained model files
+├── quantize_result/        # Exported .xmodel files
+├── quantized/             # Quantization artifacts and intermediate files
+├── export_xmodel.py       # Script to export quantized model to .xmodel format
+├── quantize.py            # Model quantization script
+└── README.md              # This file
+```
 
-##  Step 1: Train and Save Model
+## Overview
+
+This project demonstrates the complete workflow for deploying a custom MobileNetV2 model on the Kria KV260 board. The model is trained with 80 output classes and goes through quantization, export, and compilation stages to be compatible with the DPU (Deep Processing Unit) on the KV260.
+
+## Prerequisites
+
+- Vitis AI development environment
+- PyTorch with torchvision
+- Kria KV260 board with appropriate setup
+- Calibration dataset for quantization
+
+## Deployment Workflow
+
+### Step 1: Model Training and Saving
+
+The MobileNetV2 model is trained using torchvision with a custom classifier for 80 classes:
 
 ```python
-from torchvision import models
-import torch.nn as nn
-import torch
-
 model = models.mobilenet_v2(pretrained=True)
-model.classifier[1] = nn.Linear(model.last_channel, 80)  # Adjust classes
+model.classifier[1] = nn.Linear(model.last_channel, 80)
 torch.save(model.state_dict(), 'model/model.pth')
 ```
 
-##  Step 2: Quantization
+**Generated Files:**
+- `model/model.pth` - Trained model state dictionary
 
-```bash
-python quantize.py
+### Step 2: Model Quantization
+
+The trained model is quantized using the Vitis AI quantizer with calibration mode:
+
+```python
+quantizer = torch_quantizer(
+    quant_mode='calib',
+    module=model,
+    input_args=(dummy_input,),
+    output_dir='quantized',
+    device=torch.device('cpu')
+)
 ```
 
-Quantizes the model and generates files like:
-- `quantized/quant_info.json`
-- `quantized/MobileNetV2.py`
+**Generated Files:**
+- `quantized/quant_info.json` - Quantization configuration
+- `quantized/bias_corr.pth` - Bias correction parameters
+- `quantized/MobileNetV2.py` - Quantized model definition
 
-##  Step 3: Export the Quantized Model
+### Step 3: Export to .xmodel Format
 
-Export the .xmodel required for the compiler:
+The quantized model is exported to Vitis AI's .xmodel format using test mode:
 
-```bash
-python export_xmodel.py
+```python
+quantizer = torch_quantizer(
+    quant_mode='test',
+    module=model,
+    input_args=(dummy_input,),
+    output_dir='quantized',
+    device=torch.device('cpu')
+)
+quant_model = quantizer.quant_model
+quant_model(dummy_input)
+quantizer.export_xmodel()
 ```
 
-Generates:
-- `quantize_result/MobileNetV2_int.xmodel`
+**Generated Files:**
+- `quantize_result/MobileNetV2_int.xmodel` - Exported model in .xmodel format
 
-##  Step 4: Compile for KV260
+### Step 4: Compilation for KV260
 
-Use the Vitis AI compiler (vai_c_xir) to target the KV260 board:
+The .xmodel is compiled using VAI_C compiler targeting the KV260 architecture:
 
 ```bash
 vai_c_xir \
-  --xmodel quantize_result/MobileNetV2_int.xmodel \
-  --arch /opt/vitis_ai/compiler/arch/DPUCZDX8G/KV260/arch.json \
-  --output_dir compiled_model \
-  --net_name mobilenetv2_kv260
+    --xmodel quantize_result/MobileNetV2_int.xmodel \
+    --arch /opt/vitis_ai/compiler/arch/DPUCZDX8G/KV260/arch.json \
+    --output_dir compiled_model \
+    --net_name mobilenetv2_kv260
 ```
 
-Output:
-- `compiled_model/mobilenetv2_kv260.xmodel`
-- `compiled_model/meta.json`
+**Generated Files:**
+- `compiled_model/mobilenetv2_kv260.xmodel` - Final compiled model for deployment
+- `compiled_model/meta.json` - Compilation metadata
 
-##  Output Summary
+## Usage Instructions
 
-- **Compiled model**: in `compiled_model/` ready for DPU
-- **Quantization artifacts**: in `quantized/`
-- **Exported .xmodel**: in `quantize_result/`
+1. **Setup Environment**: Ensure Vitis AI development environment is properly configured
 
-## 📃 License
+2. **Prepare Calibration Data**: Place representative images in the `calibration_images/` folder for quantization calibration
 
-MIT License
+3. **Run Quantization**: Execute the quantization script
+   ```bash
+   python quantize.py
+   ```
+
+4. **Export Model**: Convert to .xmodel format
+   ```bash
+   python export_xmodel.py
+   ```
+
+5. **Compile for KV260**: Use the VAI_C compiler as shown in Step 4
+
+6. **Deploy**: Transfer the compiled model to your KV260 board and integrate with your inference application
+
+## Important Notes
+
+- All steps must be completed in sequence for compatibility with the Vitis AI toolchain
+- The model is configured for 80 output classes - modify the classifier layer if different number of classes is needed
+- Calibration data should be representative of your target inference data for optimal quantization results
+- The compiled model is specifically targeted for the KV260 board's DPU architecture
+
+## File Dependencies
+
+- `quantize.py` depends on the trained model in `model/model.pth`
+- `export_xmodel.py` depends on quantization results from the `quantized/` folder
+- VAI_C compilation depends on the exported .xmodel from `quantize_result/`
+
+## Troubleshooting
+
+- Ensure all file paths are correctly specified in the scripts
+- Verify that the Vitis AI environment variables are properly set
+- Check that the calibration dataset contains sufficient representative samples
+- Confirm the KV260 board architecture file is available at the specified path
+
+## Hardware Requirements
+
+- AMD Kria KV260 Vision AI Starter Kit
+- Sufficient host machine resources for model training and quantization
+- Network connection for model transfer to the board
